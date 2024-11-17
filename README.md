@@ -1,4 +1,5 @@
 # EC523 Project
+___
 This is based on [suinleelab/derm_audit](https://github.com/suinleelab/derm_audit).
 
 ## Instructions for Running
@@ -6,7 +7,7 @@ This is based on [suinleelab/derm_audit](https://github.com/suinleelab/derm_audi
 ### Original Repository
 
 #### Dependencies and Environment
-
+___
 The repository comes with a `environment.yaml` file. You can create an python environment based on this using `conda env create -f environment.yaml`. 
 However, the `environment.yaml` currently only works on Linux as it specifies some Linux-specific packages.
 
@@ -14,7 +15,7 @@ If you want to manually create an environemnt, we were able to get the code work
 `pandas`, `torchvision`, `torch`, `tqdm`, `protobuf`, `onnx`, `onnx2pytorch`, `geffnet`, `tensorboard` packages.
 
 #### Models and Datasets
-
+____
 The scripts allows the users to test the following classifiers: `DeepDerm`, `ModelDerm`, `Scanoma`, `SSCD`, and `SIIMISIC`. 
 - The paper links the following classifiers: [DeepDerm](https://zenodo.org/records/6784279#.ZFrDc9LMK-Z), [ModelDerm](https://figshare.com/articles/code/Caffemodel_files_and_Python_Examples/5406223), 
 and [SIIMISIC](https://zenodo.org/records/10049217).
@@ -30,9 +31,8 @@ The paper links the relevant datasets: [ISIC-2019](https://challenge.isic-archiv
 - However, you can just directly download the ISIC and DDI images to your device. 
 - I've only tested ISIC so far, and the scripts require both the `ISIC_2019_Training_GroundTruth.csv` and `ISIC_2019_Training_Input` image set to be downloaded 
 
-
-
 #### Set-up Commands
+___
 The repository comes with a `prepare.sh` shell script to configure some files and directories. 
 
 - Modify the path variables in `prepare.sh` to your classifers and your datasets.
@@ -45,8 +45,9 @@ The repository comes with a `prepare.sh` shell script to configure some files an
  
 Much of these instructions will be different on a Linux or Mac environment. 
 
-
 #### Scripts
+___
+
 `evaluate_classifier.py` just gives the accuracy of a given classifier model on a given dataset.
 - You need to specify the classifier and the dataset in the command line arguments (or just hardcode them in the file)
 
@@ -64,3 +65,13 @@ Much of these instructions will be different on a Linux or Mac environment.
   - `--batch_size` I'm not sure what this is, I just left the default value.
  
 - The generated image files have the following format: `original image` | `beign counterfactual` | `malginant counterfactual`
+
+#### Script Fixes
+___
+- All the relevant scripts imports the code for all the classifiers and dataset, even if that's not the one you are using. 
+This isn't an issue except for ModelDerm, which requires a missing `modelderm_labels.py` file for some reason. 
+As a result, I was only able to get the scripts working by commenting out every instance of `from models import ModelDermClassifier`.
+
+- If you get the error `TypeError: Couldn't build proto file into descriptor pool: duplicate file name caffe.proto`, restarting the kernel fixes this error temporarily. 
+
+
