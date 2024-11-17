@@ -12,7 +12,7 @@ from tqdm import tqdm
 from datasets import Fitzpatrick17kDataset, ISICDataset, DDIDataset
 from models import Generator
 from models import DeepDermClassifier 
-from models import ModelDermClassifier 
+# from models import ModelDermClassifier 
 from models import ScanomaClassifier 
 from models import SSCDClassifier 
 from models import SIIMISICClassifier
@@ -21,15 +21,15 @@ from evaluate_classifiers import CLASSIFIER_CLASS, DATASET_CLASS
 # offset the generated images from the original image by IM_OFFSET pixels
 IMG_OFFSET = 50
 NUM_CLASSES = 10
-DEVICE = 'cuda'
+DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 DEFAULT_DATASET = ISICDataset
 DEFAULT_CLASSIFIER = DeepDermClassifier
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--checkpoint_path", type=str, default="checkpoint.pth")
-    parser.add_argument("--dataset", type=str, choices=["f17k", "isic", "ddi", "from_file"], default="from_file")
-    parser.add_argument("--classifier", type=str, choices=["deepderm", "modelderm", "scanoma", "sscd", "siimisic", "from_file"], default="from_file")
+    parser.add_argument("--checkpoint_path", type=str, default="./pretrained_classifiers/deepderm_isic.pth")
+    parser.add_argument("--dataset", type=str, choices=["f17k", "isic", "ddi", "from_file"], default="isic")
+    parser.add_argument("--classifier", type=str, choices=["deepderm", "modelderm", "scanoma", "sscd", "siimisic", "from_file"], default="deepderm")
     parser.add_argument("--output", type=str, default="out")
     parser.add_argument("--max_images", type=int, default=40)
     parser.add_argument("--batch_size", type=int, default=4)
@@ -60,7 +60,7 @@ def main():
 
     # Load generator model
     generator = Generator(im_size=im_size)
-    checkpoint = torch.load(checkpoint_path)
+    checkpoint = torch.load(checkpoint_path, map_location=torch.device('cpu'))
     generator.load_state_dict(checkpoint['generator'])
 
     normalize = transforms.Normalize(mean=0.5,

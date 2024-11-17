@@ -51,7 +51,7 @@ from loss import *
 from models import Generator
 from models import Discriminator 
 from models import DeepDermClassifier 
-from models import ModelDermClassifier 
+# from models import ModelDermClassifier 
 from models import ScanomaClassifier 
 from models import SSCDClassifier 
 from models import SIIMISICClassifier
@@ -66,7 +66,7 @@ def main():
     min_pred = 0
     max_pred = 1
     training_ratio = 5
-    device = 'cuda'
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
     #device = 'cpu'
     batch_size = 4
     accumulate_steps = 8 
