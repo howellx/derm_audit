@@ -27,7 +27,7 @@ DEFAULT_CLASSIFIER = DeepDermClassifier
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--checkpoint_path", type=str, default="./pretrained_classifiers/deepderm_isic.pth")
+    parser.add_argument("--checkpoint_path", type=str, default="/projectnb/ec523kb/projects/skin_tone/GAN/deepderm_isic.pth")
     parser.add_argument("--dataset", type=str, choices=["f17k", "isic", "ddi", "from_file"], default="isic")
     parser.add_argument("--classifier", type=str, choices=["deepderm", "modelderm", "scanoma", "sscd", "siimisic", "from_file"], default="deepderm")
     parser.add_argument("--output", type=str, default="out")

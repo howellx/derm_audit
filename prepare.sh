@@ -38,18 +38,20 @@ fi
 # ln -s ~/OneDrive/Documents/school/EC523/derm_audit/models/10049217/sscd_isic.pth ${CLASSIFIER_DIR}/
 # ln -s ~/OneDrive/Documents/school/EC523/derm_audit/models/10049217/sscd_f17k.pth ${CLASSIFIER_DIR}/
 
+# ln -s ~/OneDrive/Documents/school/EC523/derm_audit/models/6784279/DDI-models/DDI-models/deepderm.pth ${CLASSIFIER_DIR}/
 
-ln -s ~/OneDrive/Documents/school/EC523/derm_audit/models/6784279/DDI-models/DDI-models/deepderm.pth ${CLASSIFIER_DIR}/
+ln -s /projectnb/ec523kb/projects/skin_tone/DDI-models/DDI-models/deepderm.pth ${CLASSIFIER_DIR}/
 
-ln -s ~/OneDrive/Documents/school/EC523/derm_audit/models/10049217/9c_b7ns_1e_224_ext_15ep_best_fold0.pth ${CLASSIFIER_DIR}/
-ln -s ~/OneDrive/Documents/school/EC523/derm_audit/models/10049217/9c_b6ns_1e_224_ext_15ep_best_fold1.pth ${CLASSIFIER_DIR}/
-ln -s ~/OneDrive/Documents/school/EC523/derm_audit/models/10049217/9c_b5ns_1e_224_ext_15ep_best_fold2.pth ${CLASSIFIER_DIR}/
+
+# ln -s ~/OneDrive/Documents/school/EC523/derm_audit/models/10049217/9c_b7ns_1e_224_ext_15ep_best_fold0.pth ${CLASSIFIER_DIR}/
+# ln -s ~/OneDrive/Documents/school/EC523/derm_audit/models/10049217/9c_b6ns_1e_224_ext_15ep_best_fold1.pth ${CLASSIFIER_DIR}/
+# ln -s ~/OneDrive/Documents/school/EC523/derm_audit/models/10049217/9c_b5ns_1e_224_ext_15ep_best_fold2.pth ${CLASSIFIER_DIR}/
 
 # Link in datasets
 ### you will also need to edit these paths to match the locations of your datasets ###
-ln -s ~/OneDrive/Documents/school/EC523/derm_audit/datasets/fitzpatrick ${DATA_DIR}/f17k
-ln -s ~/OneDrive/Documents/school/EC523/derm_audit/datasets/ISIC_2019_Test_Input/ISIC_2019_Test_Input ${DATA_DIR}/isic
-ln -s ~/OneDrive/Documents/school/EC523/derm_audit/datasets/ddidiversedermatologyimages ${DATA_DIR}/ddi
+# ln -s ~/OneDrive/Documents/school/EC523/derm_audit/datasets/fitzpatrick ${DATA_DIR}/f17k
+ln -s /projectnb/ec523kb/projects/skin_tone/isic/ ${DATA_DIR}/isic
+# ln -s ~/OneDrive/Documents/school/EC523/derm_audit/datasets/ddidiversedermatologyimages ${DATA_DIR}/ddi
 
 # Download caffe proto; at time of writing, PyCaffe isn't compatible with 
 # the necessary version of PyTorch
