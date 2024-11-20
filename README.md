@@ -9,9 +9,12 @@ This is based on [suinleelab/derm_audit](https://github.com/suinleelab/derm_audi
 #### Dependencies and Environment
 ___
 The repository comes with a `environment.yaml` file. You can create an python environment based on this using `conda env create -f environment.yaml`. 
-However, the `environment.yaml` currently only works on Linux as it specifies some Linux-specific packages.
+However, the `environment.yaml` currently only works on Linux as it specifies some Linux-specific packages. 
+- Setting this up on the SCC, we are able to create the environment via this method, but it did output some error.
+- We ultimately got the environment to run, so we just ignored the error
+- We still had to pip install `onnx2pytorch` and `geffnet`
 
-If you want to manually create an environemnt, we were able to get the code working with Python 3.12 and pip installing the 
+If you want to manually create an environemnt (on Windows for example), we were able to get the code working with Python 3.12 and pip installing the 
 `pandas`, `torchvision`, `torch`, `tqdm`, `protobuf`, `onnx`, `onnx2pytorch`, `geffnet`, `tensorboard` packages.
 
 #### Models and Datasets
@@ -29,13 +32,14 @@ The paper also links their GAN models [here](https://zenodo.org/records/10049217
 The paper links the relevant datasets: [ISIC-2019](https://challenge.isic-archive.com/data/#2019), [Fitzpatrick17k](https://github.com/mattgroh/fitzpatrick17k), and [DDI](https://stanfordaimi.azurewebsites.net/datasets/35866158-8196-48d8-87bf-50dca81df965). 
 - I haven't figured out how to use the Fitzpatrick images as they do not provide the actual image files, but links to the images instead. 
 - However, you can just directly download the ISIC and DDI images to your device. 
-- I've only tested ISIC so far, and the scripts require both the `ISIC_2019_Training_GroundTruth.csv` and `ISIC_2019_Training_Input` image set to be downloaded 
+- I've only tested ISIC so far, and the scripts require both the `ISIC_2019_Training_GroundTruth.csv` and `ISIC_2019_Training_Input` image set to be downloaded and in the same directory.
 
 #### Set-up Commands
 ___
 The repository comes with a `prepare.sh` shell script to configure some files and directories. 
 
 - Modify the path variables in `prepare.sh` to your classifers and your datasets.
+  - Specifically for ISIC, make sure the directory you link contains both the `ISIC_2019_Training_GroundTruth.csv` file and the `ISIC_2019_Training_Input` directory.
 - Make sure you can run bash commands (Git Bash, WSL, Cygwin all let you run bash commands this on Windows).
 - Make sure `wget` is a runnable bash command. I installed this with Chocolatey on Windows via `choco install wget -y`, but I'm sure there are other methods.
 - Make sure `protoc` is a runnable command. You can test this with `protoc --version`. To install for Windows:
@@ -43,7 +47,7 @@ The repository comes with a `prepare.sh` shell script to configure some files an
   - Locate the `protoc.exe` file.
   - Add the path to the directory containing `protoc.exe` file to your system PATH environment variable.
  
-Much of these instructions will be different on a Linux or Mac environment. 
+Much of these instructions will be different on a Linux or Mac environment. For the SCC, it was not necessary to install `wget` and `protoc` as it was already there.
 
 #### Scripts
 ___
