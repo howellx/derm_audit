@@ -84,6 +84,7 @@ def main():
 
     im_size = classifier.image_size
     positive_index = classifier.positive_index
+
     # Images must be in the range (-1, 1)
     normalize = transforms.Normalize(mean=0.5,
                                      std=0.5)
@@ -165,7 +166,10 @@ def main():
                 # technique doesn't use the original labels at all.
                 im = im_batch[batch_size*i_step:batch_size*(1+i_step)]
                 with torch.no_grad():
-                    y_orig = classifier(im)[:,positive_index]
+                    y_test = classifier(im)[:,:]
+                    y_orig = y_test[:,positive_index]
+                    print(y_test)
+                    print("dummy")
                     y_orig_binned = torch.clamp(torch.bucketize(y_orig, bins)-offset, min=0, max=n_classes-1)
 
                     # generate images in random target bins 

@@ -1,13 +1,26 @@
-import os, math
-import torch
-from tqdm import tqdm
-from torch.utils.tensorboard import SummaryWriter
-from torchvision import transforms
-from datasets import ISICDataset  # Replace with the dataset you're using
-from models import DeepDermClassifier  # Pretrained DeepDerm classifier
-import torch.nn as nn
-import torch.utils.data
+# -*- coding: utf-8 -*-
+"""
+Created on Mon Nov 25 22:27:15 2024
 
+@author: muffi
+"""
+
+from __future__ import print_function
+import os, math
+import random
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+import torch.utils.data
+import torchvision.transforms as transforms
+import torchvision.utils as vutils
+import numpy as np
+import matplotlib.pyplot as plt
+from tqdm import tqdm
+import torchvision
+from PIL import Image
+from copy import deepcopy
 
 def nonlinearity(x):
     ''' Also called the activation function. '''
@@ -113,8 +126,13 @@ class Up(nn.Module):
         return x
     
 class UNet(nn.Module):
-    ''' UNet implementation of a denoising auto-encoder. '''
+    ''' UNet implementation of a denoising auto-encoder.'''
     def __init__(self, c_in=3, c_out=3, conditional=True, emb_dim=256):
+        '''
+        c_in: Number of image channels in input.
+        c_out: Number of image channels in output.
+        emb_dim: Length of conditional embedding vector.
+        '''
         super().__init__()
         self.emb_dim = emb_dim
         self.inc = Block(c_in, 64)
@@ -132,61 +150,74 @@ class UNet(nn.Module):
         self.up3 = Up(128, 64)
         self.outc = nn.Conv2d(64, c_out, kernel_size=1)
 
+        # nn.Embedding implements a dictionary of num_classes prototypes
         self.conditional = conditional
         if conditional:
-            self.prob_projection = nn.Linear(1, emb_dim)  # Linear projection for scalar probability
+            num_classes = 2
+
+            self.gender_vectors = nn.Parameter(torch.randn(num_classes, emb_dim))
+
+
 
     def temporal_encoding(self, timestep):
         '''
-        Sinusoidal temporal encoding for timesteps.
+        This implements the sinusoidal temporal encoding for the current timestep.
+        Input timestep is a tensor of length equal to the batch size
+        Output emb is a 2D tensor B x V,
+            where V is the embedding dimension.
         '''
+        assert len(timestep.shape) == 1
         half_dim = self.emb_dim // 2
         emb = math.log(10000) / (half_dim - 1)
         emb = torch.exp(torch.arange(half_dim, dtype=torch.float32) * -emb)
         emb = emb.to(device=timestep.device)
         emb = timestep.float()[:, None] * emb[None, :]
         emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=1)
-        if self.emb_dim % 2 == 1:
-            emb = torch.nn.functional.pad(emb, (0, 1, 0, 0))
+        if self.emb_dim % 2 == 1:  # zero pad
+            emb = torch.nn.functional.pad(emb, (0,1,0,0))
         return emb
 
     def unet_forward(self, x, t):
-        '''
-        Forward pass through UNet.
-        '''
-        x1 = self.inc(x, t)
-        x2 = self.down1(x1, t)
-        x3 = self.down2(x2, t)
-        x4 = self.down3(x3, t)
+        # x: B x 3 x 224 x 224
+        x1 = self.inc(x, t)    # x1: B x 64 x 64 x 64
+        x2 = self.down1(x1, t) # x2: B x 128 x 32 x 32
+        x3 = self.down2(x2, t) # x3: B x 256 x 16 x 16
+        x4 = self.down3(x3, t) # x3: B x 256 x 8 x 8
 
-        x4 = self.bot1(x4, t)
-        x4 = self.bot2(x4, t)
-        x4 = self.bot3(x4, t)
-        x4 = self.bot4(x4, t)
+        x4 = self.bot1(x4, t) # x4: B x 512 x 8 x 8
+        # Removing bot2 and bot3 can save some time at the expense of quality
+        x4 = self.bot2(x4, t) # x4: B x 512 x 8 x 8
+        x4 = self.bot3(x4, t) # x4: B x 512 x 8 x 8
+        x4 = self.bot4(x4, t) # x4: B x 256 x 8 x 8
 
-        x = self.up1(x4, x3, t)
-        x = self.up2(x, x2, t)
-        x = self.up3(x, x1, t)
-        output = self.outc(x)
+        x = self.up1(x4, x3, t) # x: B x 128 x 16 x 16
+        x = self.up2(x, x2, t)  # x: B x 64 x 32 x 32
+        x = self.up3(x, x1, t)  # x: B x 64 x 64 x 64
+        output = self.outc(x)   # x: B x 3 x 64 x 64
         return output
 
     def forward(self, x, t, y=None):
         '''
-        x: Image input
-        t: Integer timestep
-        y: Scalar probability
+        x: image input
+        t: integer timestep
+        y: binary conditioning
+        Return denoised image conditioned on the timestep t and
+            class label y.
         '''
-        temp_emb = self.temporal_encoding(t)
+        if self.conditional:
 
-        if self.conditional and y is not None:
-            y = y.view(-1, 1)  # Reshape y to [B, 1]
-            prob_emb = self.prob_projection(y)  # Project probability to embedding space
-            c = temp_emb + prob_emb
+            # Sinusoidal temporal encoding
+            temp_emb = self.temporal_encoding(t)
+
+            # Selecting gender vector based on y
+            gender_emb = self.gender_vectors[y]
+
+            # Combining temporal and gender embeddings
+            c = temp_emb + gender_emb
+
         else:
-            c = temp_emb
-
+            c = self.temporal_encoding(t)
         return self.unet_forward(x, c)
-
 
 class Diffusion:
     '''
@@ -251,7 +282,7 @@ class Diffusion:
         '''
         This function is used  to generate images.
 
-        model: The denoising auto-encoder epsilon_{theta}
+        model: The denoising auto-encoder \epsilon_{\theta}
         n: The number of images you want to generate
         y: A 1D binary vector of size n indicating the
             desired gender for the generated face.
@@ -312,100 +343,10 @@ class Diffusion:
         return x_t
 
 
-def main():
-    # Hyperparameters
-    num_epochs = 500
-    batch_size = 4  # Small batch size per gradient step
-    accumulate_steps = 8  # Number of steps for gradient accumulation
-    effective_batch_size = batch_size * accumulate_steps  # Effective batch size
-    save_path = 'diffusion_checkpoint.pth'
-    save_interval = 100
-    img_size = 128
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
-    # Dataset and DataLoader
-    transform = transforms.Compose([
-        transforms.Resize(int(img_size * 1.2)),  # Resize to 20% larger
-        transforms.RandomCrop(img_size),        # Random crop to target size
-        transforms.ColorJitter(0.2, 0, 0, 0),   # Apply brightness jitter
-        transforms.ToTensor(),                  # Convert to tensor
-        transforms.Normalize(mean=0.5, std=0.5) # Normalize to [-1, 1]
-    ])
-    dataset = ISICDataset(transform=transform)
-    dataloader = torch.utils.data.DataLoader(
-        dataset, 
-        batch_size=effective_batch_size,  # Load effective batch size
-        shuffle=True, 
-        drop_last=True, 
-        persistent_workers=True, 
-        num_workers=2
-    )
-
-    # Models
-    classifier = DeepDermClassifier().to(device)
-    classifier.eval()
-    model = UNet(c_in=3, c_out=3, conditional=True).to(device)
-    diffusion = Diffusion(img_size=img_size, device=device)
-
-    # Optimizer
-    optimizer = torch.optim.Adam(model.parameters(), lr=2e-4)
-
-    # Loss function
-    criterion = torch.nn.MSELoss()
-
-    # Specify the positive class index
-    positive_index = classifier.positive_index  # `1` for the positive class
-
-    # Training loop
-    writer = SummaryWriter()
-    for epoch in range(num_epochs):
-        pbar = tqdm(dataloader)
-        total_loss = 0
-        for batch in pbar:
-            images, _ = batch  # Assuming the dataset returns (image, label)
-            images = images.to(device)
-
-            # Split into smaller batches for gradient accumulation
-            optimizer.zero_grad()
-            for step in range(accumulate_steps):
-                start = step * batch_size
-                end = (step + 1) * batch_size
-                images_step = images[start:end]  # Slice smaller batch
-
-                # Get noisy images and noise
-                timesteps = torch.randint(0, diffusion.num_timesteps, (batch_size,), device=device)
-                noisy_images, noise = diffusion.get_noisy_image(images_step, timesteps)
-
-                # Get the probability of the positive class from DeepDermClassifier
-                y_prob = classifier(images_step)[:, positive_index]
-
-                # Predict noise using UNet
-                predicted_noise = model(noisy_images, timesteps, y=y_prob)
-
-                # Compute loss and accumulate gradients
-                loss = criterion(predicted_noise, noise) / accumulate_steps
-                loss.backward()
-                total_loss += loss.item()
-
-            # Update parameters after accumulating gradients
-            optimizer.step()
-            pbar.set_description(f"Epoch {epoch+1}, Loss: {loss.item():.4f}")
-
-        writer.add_scalar('Loss/train', total_loss / len(dataloader), epoch)
-
-        # Save checkpoint every epoch
-        torch.save({'model': model.state_dict(),
-                    'optimizer': optimizer.state_dict(),
-                    'epoch': epoch}, save_path)
-
-        # Backup every `save_interval` epochs
-        if epoch % save_interval == 0:
-            torch.save({'model': model.state_dict(),
-                        'optimizer': optimizer.state_dict(),
-                        'epoch': epoch}, f"{save_path}.{epoch}")
-
-    writer.close()
-
-if __name__ == "__main__":
-    main()
-
+def show_images(images, **kwargs):
+    plt.figure(figsize=(10, 10), dpi=80)
+    grid = torchvision.utils.make_grid(images, **kwargs)
+    ndarr = grid.permute(1, 2, 0).to('cpu').numpy()
+    im = Image.fromarray(ndarr)
+    plt.imshow(im)
+    plt.show()
