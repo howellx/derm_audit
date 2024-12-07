@@ -314,7 +314,7 @@ class Diffusion:
 
 def main():
     # Hyperparameters
-    num_epochs = 500
+    num_epochs = 30
     batch_size = 4  # Small batch size per gradient step
     accumulate_steps = 8  # Number of steps for gradient accumulation
     effective_batch_size = batch_size * accumulate_steps  # Effective batch size
