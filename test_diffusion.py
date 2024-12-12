@@ -70,8 +70,10 @@ def main():
                 n_sample=args.batch_size,
                 size=(3, 224, 224),
                 device=DEVICE,
-                guide_w=args.guide_w,
-                condition=torch.ones(args.batch_size, dtype=torch.long, device=DEVICE)
+                guide_w=5.0,
+                condition=torch.ones(args.batch_size, dtype=torch.long, device=DEVICE),
+                x_init=images,
+                denoise_strength=0.9
             )
             samples.append(x_gen_mel)
 
@@ -80,8 +82,10 @@ def main():
                 n_sample=args.batch_size,
                 size=(3, 224, 224),
                 device=DEVICE,
-                guide_w=args.guide_w,
-                condition=torch.zeros(args.batch_size, dtype=torch.long, device=DEVICE)
+                guide_w=3.0,
+                condition=torch.zeros(args.batch_size, dtype=torch.long, device=DEVICE),
+                x_init=images,
+                denoise_strength=0.8
             )
             samples.append(x_gen_benign)
 
