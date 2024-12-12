@@ -1,411 +1,326 @@
-import os, math
-import torch
+from typing import Dict, Tuple
 from tqdm import tqdm
-from torch.utils.tensorboard import SummaryWriter
-from torchvision import transforms
-from datasets import ISICDataset  # Replace with the dataset you're using
-from models import DeepDermClassifier  # Pretrained DeepDerm classifier
+import torch
 import torch.nn as nn
-import torch.utils.data
+import torch.nn.functional as F
+from torch.utils.data import DataLoader
+from torchvision import models, transforms
+from torchvision.datasets import MNIST
+from torchvision.utils import save_image, make_grid
+import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation, PillowWriter
+import numpy as np
+from datasets import ISICDataset 
+from models import DeepDermClassifier 
+from torch.utils.tensorboard import SummaryWriter
 
-
-def nonlinearity(x):
-    ''' Also called the activation function. '''
-    # swish
-    return x*torch.sigmoid(x)
-    # Swish is similar to GeLU. People tend to use this more than ReLU nowadays.
-
-class Block(nn.Module):
-    '''
-    This implements a residual block.
-    It has a similar structure to the residual block used in ResNets,
-    but there are a few modern modifications:
-     - Different order of applying weights, activations, and normalization.
-     - Swish instead of ReLU activation.
-     - GroupNorm instead of BatchNorm.
-    We also need to add the conditional embedding.
-
-    '''
-    def __init__(self, in_channels, out_channels, emb_dim=256):
-        '''
-        in_channels: Number of image channels in input.
-        out_channels: Number of image channels in output.
-        emb_dim: Length of conditional embedding vector.
-        '''
+class ResidualConvBlock(nn.Module):
+    def __init__(
+        self, in_channels: int, out_channels: int, is_res: bool = False
+    ) -> None:
         super().__init__()
+        '''
+        standard ResNet style convolutional block
+        '''
+        self.same_channels = in_channels==out_channels
+        self.is_res = is_res
+        self.conv1 = nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, 3, 1, 1),
+            nn.BatchNorm2d(out_channels),
+            nn.GELU(),
+        )
+        self.conv2 = nn.Sequential(
+            nn.Conv2d(out_channels, out_channels, 3, 1, 1),
+            nn.BatchNorm2d(out_channels),
+            nn.GELU(),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if self.is_res:
+            x1 = self.conv1(x)
+            x2 = self.conv2(x1)
+            # this adds on correct residual in case channels have increased
+            if self.same_channels:
+                out = x + x2
+            else:
+                out = x1 + x2 
+            return out / 1.414
+        else:
+            x1 = self.conv1(x)
+            x2 = self.conv2(x1)
+            return x2
+
+
+class UnetDown(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super(UnetDown, self).__init__()
+        '''
+        process and downscale the image feature maps
+        '''
+        layers = [ResidualConvBlock(in_channels, out_channels), nn.MaxPool2d(2)]
+        self.model = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.model(x)
+
+
+class UnetUp(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super(UnetUp, self).__init__()
+        '''
+        process and upscale the image feature maps
+        '''
+        layers = [
+            nn.ConvTranspose2d(in_channels, out_channels, 2, 2),
+            ResidualConvBlock(out_channels, out_channels),
+            ResidualConvBlock(out_channels, out_channels),
+        ]
+        self.model = nn.Sequential(*layers)
+
+    def forward(self, x, skip):
+        x = torch.cat((x, skip), 1)
+        x = self.model(x)
+        return x
+
+
+class EmbedFC(nn.Module):
+    def __init__(self, input_dim, emb_dim):
+        super(EmbedFC, self).__init__()
+        '''
+        generic one layer FC NN for embedding things  
+        '''
+        self.input_dim = input_dim
+        layers = [
+            nn.Linear(input_dim, emb_dim),
+            nn.GELU(),
+            nn.Linear(emb_dim, emb_dim),
+        ]
+        self.model = nn.Sequential(*layers)
+
+    def forward(self, x):
+        x = x.view(-1, self.input_dim)
+        return self.model(x)
+
+
+class ContextUnet(nn.Module):
+    def __init__(self, in_channels, n_feat = 256, n_classes=10):
+        super(ContextUnet, self).__init__()
 
         self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.norm1 = nn.GroupNorm(1, in_channels)
-        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1, bias=False)
+        self.n_feat = n_feat
+        self.n_classes = n_classes
+
+        self.init_conv = ResidualConvBlock(in_channels, n_feat, is_res=True)
+
+        self.down1 = UnetDown(n_feat, n_feat)
+        self.down2 = UnetDown(n_feat, 2 * n_feat)
+
+        self.to_vec = nn.Sequential(nn.AvgPool2d(7), nn.GELU())
+
+        self.timeembed1 = EmbedFC(1, 2*n_feat)
+        self.timeembed2 = EmbedFC(1, 1*n_feat)
+        self.contextembed1 = EmbedFC(n_classes, 2*n_feat)
+        self.contextembed2 = EmbedFC(n_classes, 1*n_feat)
+
+        self.up0 = nn.Sequential(
+            # nn.ConvTranspose2d(6 * n_feat, 2 * n_feat, 7, 7), # when concat temb and cemb end up w 6*n_feat
+            nn.ConvTranspose2d(2 * n_feat, 2 * n_feat, 7, 7), # otherwise just have 2*n_feat
+            nn.GroupNorm(8, 2 * n_feat),
+            nn.ReLU(),
+        )
+
+        self.up1 = UnetUp(4 * n_feat, n_feat)
+        self.up2 = UnetUp(2 * n_feat, n_feat)
+        self.out = nn.Sequential(
+            nn.Conv2d(2 * n_feat, n_feat, 3, 1, 1),
+            nn.GroupNorm(8, n_feat),
+            nn.ReLU(),
+            nn.Conv2d(n_feat, self.in_channels, 3, 1, 1),
+        )
+
+    def forward(self, x, c, t, context_mask):
+        # x is (noisy) image, c is context label, t is timestep, 
+        # context_mask says which samples to block the context on
+
+        x = self.init_conv(x)
+        down1 = self.down1(x)
+        down2 = self.down2(down1)
+        hiddenvec = self.to_vec(down2)
+
+        # convert context to one hot embedding
+        c = nn.functional.one_hot(c, num_classes=self.n_classes).type(torch.float)
         
-        self.proj = nn.Linear(emb_dim, out_channels)
-
-    def forward(self, x, t):
-        '''
-        h and x have dimension B x C x H x W,
-        where B is batch size,
-              C is channel size,
-              H is height,
-              W is width.
-        t is the conditional embedding.
-        t has dimension B x V,
-        where V is the embedding dimension.
-        '''
-        h = x
-        h = self.norm1(h)
-        h = nonlinearity(h)
-        h = self.conv1(h)
-
-        # Add conditioning to the hidden feature map h
-        # (1) Linear projection of the conditional embedding t
-        t_proj = self.proj(t)
-        t_proj = nonlinearity(t_proj)
-
-        # (3) Reshape for broadcasting across H and W dimensions
-        # t_proj is reshaped to B x C x 1 x 1 so that it can be broadcasted
-        t_proj = t_proj[:, :, None, None]
+        # mask out context if context_mask == 1
+        context_mask = context_mask[:, None]
+        context_mask = context_mask.repeat(1,self.n_classes)
+        context_mask = (-1*(1-context_mask)) # need to flip 0 <-> 1
+        c = c * context_mask
         
-        # (3) Add the conditioning to h
-        h = h + t_proj
+        # embed context, time step
+        cemb1 = self.contextembed1(c).view(-1, self.n_feat * 2, 1, 1)
+        temb1 = self.timeembed1(t).view(-1, self.n_feat * 2, 1, 1)
+        cemb2 = self.contextembed2(c).view(-1, self.n_feat, 1, 1)
+        temb2 = self.timeembed2(t).view(-1, self.n_feat, 1, 1)
 
-        return h
-    
-class Down(nn.Module):
-    ''' Downsampling block.'''
-    def __init__(self, in_channels, out_channels):
-        '''
-        This block downsamples the feature map size by 2.
-        in_channels: Number of image channels in input.
-        out_channels: Number of image channels in output.
-        '''
-        super().__init__()
-        self.pool = nn.MaxPool2d(2)
-        self.conv = Block(in_channels, out_channels)
+        # could concatenate the context embedding here instead of adaGN
+        # hiddenvec = torch.cat((hiddenvec, temb1, cemb1), 1)
 
-    def forward(self, x, t):
-        ''' x is the feature maps; t is the conditional embeddings. '''
-        x = self.pool(x) # The max pooling decreases feature map size by factor of 2
-        x = self.conv(x, t)
-        return x
-
-class Up(nn.Module):
-    ''' Upsampling block.'''
-    def __init__(self, in_channels, out_channels):
-        '''
-        This block upsamples the feature map size by 2.
-        in_channels: Number of image channels in input.
-        out_channels: Number of image channels in output.
-        '''
-        super().__init__()
-        self.up = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
-        self.conv = Block(in_channels, out_channels)
-
-    def forward(self, x, skip_x, t):
-        '''
-        x is the feature maps;
-        skip_x is the skipp connection feature maps;
-        t is the conditional embeddings.
-        '''
-        x = self.up(x) # The upsampling increases the feature map size by factor of 2
-        x = torch.cat([skip_x, x], dim=1) # concatentate skip connection
-        x = self.conv(x, t)
-        return x
-    
-class UNet(nn.Module):
-    ''' UNet implementation of a denoising auto-encoder. '''
-    def __init__(self, c_in=3, c_out=3, conditional=True, emb_dim=256):
-        super().__init__()
-        self.emb_dim = emb_dim
-        self.inc = Block(c_in, 64)
-        self.down1 = Down(64, 128)
-        self.down2 = Down(128, 256)
-        self.down3 = Down(256, 256)
-
-        self.bot1 = Block(256, 512)
-        self.bot2 = Block(512, 512)
-        self.bot3 = Block(512, 512)
-        self.bot4 = Block(512, 256)
-
-        self.up1 = Up(512, 128)
-        self.up2 = Up(256, 64)
-        self.up3 = Up(128, 64)
-        self.outc = nn.Conv2d(64, c_out, kernel_size=1)
-
-        self.conditional = conditional
-        if conditional:
-            self.prob_projection = nn.Linear(1, emb_dim)  # Linear projection for scalar probability
-
-    def temporal_encoding(self, timestep):
-        '''
-        Sinusoidal temporal encoding for timesteps.
-        '''
-        half_dim = self.emb_dim // 2
-        emb = math.log(10000) / (half_dim - 1)
-        emb = torch.exp(torch.arange(half_dim, dtype=torch.float32) * -emb)
-        emb = emb.to(device=timestep.device)
-        emb = timestep.float()[:, None] * emb[None, :]
-        emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=1)
-        if self.emb_dim % 2 == 1:
-            emb = torch.nn.functional.pad(emb, (0, 1, 0, 0))
-        return emb
-
-    def unet_forward(self, x, t):
-        '''
-        Forward pass through UNet.
-        '''
-        x1 = self.inc(x, t)
-        x2 = self.down1(x1, t)
-        x3 = self.down2(x2, t)
-        x4 = self.down3(x3, t)
-
-        x4 = self.bot1(x4, t)
-        x4 = self.bot2(x4, t)
-        x4 = self.bot3(x4, t)
-        x4 = self.bot4(x4, t)
-
-        x = self.up1(x4, x3, t)
-        x = self.up2(x, x2, t)
-        x = self.up3(x, x1, t)
-        output = self.outc(x)
-        return output
-
-    def forward(self, x, t, y=None):
-        '''
-        x: Image input
-        t: Integer timestep
-        y: Scalar probability
-        '''
-        temp_emb = self.temporal_encoding(t)
-
-        if self.conditional and y is not None:
-            y = y.view(-1, 1)  # Reshape y to [B, 1]
-            prob_emb = self.prob_projection(y)  # Project probability to embedding space
-            c = temp_emb + prob_emb
-        else:
-            c = temp_emb
-
-        return self.unet_forward(x, c)
+        up1 = self.up0(hiddenvec)
+        # up2 = self.up1(up1, down2) # if want to avoid add and multiply embeddings
+        up2 = self.up1(cemb1*up1+ temb1, down2)  # add and multiply embeddings
+        up3 = self.up2(cemb2*up2+ temb2, down1)
+        out = self.out(torch.cat((up3, x), 1))
+        return out
 
 
-class Diffusion:
-    '''
-    Implements the Diffusion process,
-    including both training and sampling.
-    '''
-    def __init__(self, num_timesteps=1000, beta_start=1e-4, beta_end=0.02, img_size=64, device="cuda"):
-        self.num_timesteps = num_timesteps
-        self.beta_start = beta_start
-        self.beta_end = beta_end
-        self.img_size = img_size
+def ddpm_schedules(beta1, beta2, T):
+    """
+    Returns pre-computed schedules for DDPM sampling, training process.
+    """
+    assert beta1 < beta2 < 1.0, "beta1 and beta2 must be in (0, 1)"
+
+    beta_t = (beta2 - beta1) * torch.arange(0, T + 1, dtype=torch.float32) / T + beta1
+    sqrt_beta_t = torch.sqrt(beta_t)
+    alpha_t = 1 - beta_t
+    log_alpha_t = torch.log(alpha_t)
+    alphabar_t = torch.cumsum(log_alpha_t, dim=0).exp()
+
+    sqrtab = torch.sqrt(alphabar_t)
+    oneover_sqrta = 1 / torch.sqrt(alpha_t)
+
+    sqrtmab = torch.sqrt(1 - alphabar_t)
+    mab_over_sqrtmab_inv = (1 - alpha_t) / sqrtmab
+
+    return {
+        "alpha_t": alpha_t,  # \alpha_t
+        "oneover_sqrta": oneover_sqrta,  # 1/\sqrt{\alpha_t}
+        "sqrt_beta_t": sqrt_beta_t,  # \sqrt{\beta_t}
+        "alphabar_t": alphabar_t,  # \bar{\alpha_t}
+        "sqrtab": sqrtab,  # \sqrt{\bar{\alpha_t}}
+        "sqrtmab": sqrtmab,  # \sqrt{1-\bar{\alpha_t}}
+        "mab_over_sqrtmab": mab_over_sqrtmab_inv,  # (1-\alpha_t)/\sqrt{1-\bar{\alpha_t}}
+    }
+
+
+class DDPM(nn.Module):
+    def __init__(self, nn_model, betas, n_T, device, drop_prob=0.1):
+        super(DDPM, self).__init__()
+        self.nn_model = nn_model.to(device)
+
+        # register_buffer allows accessing dictionary produced by ddpm_schedules
+        # e.g. can access self.sqrtab later
+        for k, v in ddpm_schedules(betas[0], betas[1], n_T).items():
+            self.register_buffer(k, v)
+
+        self.n_T = n_T
         self.device = device
+        self.drop_prob = drop_prob
+        self.loss_mse = nn.MSELoss()
 
-        ################## YOUR CODE HERE ##################
-        # Here you should instantiate a 1D vector called self.beta,
-        # which contains the \beta_t values
-        # We use 1000 time steps, so t = 1:1000
-        # \beta_1 = 1e-4
-        # \beta_1000 = 0.02
-        # The value of beta should increase linearly w.r.t. the value of t.
-        #
-        # Additionally, it may be helpful to pre-calculate the values of
-        # \alpha_t and \bar{\alpha}_t here, since you'll use them often.
+    def forward(self, x, c):
+        """
+        this method is used in training, so samples t and noise randomly
+        """
 
-        ####################################################
-        self.beta = torch.linspace(beta_start, beta_end, num_timesteps, device=device)
-        self.alpha = 1.0 - self.beta
-        self.alpha_bar = torch.cumprod(self.alpha, dim=0)
-        self.alpha_bar_sqrt = torch.sqrt(self.alpha_bar)
-        self.one_minus_alpha_bar_sqrt = torch.sqrt(1 - self.alpha_bar)
+        _ts = torch.randint(1, self.n_T+1, (x.shape[0],)).to(self.device)  # t ~ Uniform(0, n_T)
+        noise = torch.randn_like(x)  # eps ~ N(0, 1)
 
-    def get_noisy_image(self, x_0, t):
-        '''
-        This function is only used for training.
+        x_t = (
+            self.sqrtab[_ts, None, None, None] * x
+            + self.sqrtmab[_ts, None, None, None] * noise
+        )  # This is the x_t, which is sqrt(alphabar) x_0 + sqrt(1-alphabar) * eps
+        # We should predict the "error term" from this x_t. Loss is what we return.
 
-        x_0: The input image. Dimensions: B x 3 x H x W
-        t: A 1D vector of length B representing the desired timestep
-          B is the batch size.
-          H and W are the height and width of the input image.
-
-        This function returns a *tuple of TWO tensors*:
-            (x_t, epsilon)
-            both have dimensions B x 3 x H x W
-        '''
-        ################## YOUR CODE HERE ##################
-        # Calculate x_t from x_0 and t based on the equation you derived in problem 1.
-        # Remember that \epsilon in the equation is noise drawn from
-        # a standard normal distribution.
-        # *** Return BOTH x_t and \epsilon as a tuple ***.
-
-        ####################################################
-        epsilon = torch.randn_like(x_0)
+        # dropout context with some probability
+        context_mask = torch.bernoulli(torch.zeros_like(c)+self.drop_prob).to(self.device)
         
-        alpha_bar_sqrt_t = self.alpha_bar_sqrt[t].view(-1, 1, 1, 1)
-        one_minus_alpha_bar_sqrt_t = self.one_minus_alpha_bar_sqrt[t].view(-1, 1, 1, 1)
-        x_t = alpha_bar_sqrt_t * x_0 + one_minus_alpha_bar_sqrt_t * epsilon
-        return x_t, epsilon
+        # return MSE between added noise, and our predicted noise
+        return self.loss_mse(noise, self.nn_model(x_t, c, _ts / self.n_T, context_mask))
+
+    def sample(self, n_sample, size, device, guide_w = 0.0):
+        # we follow the guidance sampling scheme described in 'Classifier-Free Diffusion Guidance'
+        # to make the fwd passes efficient, we concat two versions of the dataset,
+        # one with context_mask=0 and the other context_mask=1
+        # we then mix the outputs with the guidance scale, w
+        # where w>0 means more guidance
+
+        x_i = torch.randn(n_sample, *size).to(device)  # x_T ~ N(0, 1), sample initial noise
+        c_i = torch.arange(0,10).to(device) # context for us just cycles throught the mnist labels
+        c_i = c_i.repeat(int(n_sample/c_i.shape[0]))
+
+        # don't drop context at test time
+        context_mask = torch.zeros_like(c_i).to(device)
+
+        # double the batch
+        c_i = c_i.repeat(2)
+        context_mask = context_mask.repeat(2)
+        context_mask[n_sample:] = 1. # makes second half of batch context free
+
+        x_i_store = [] # keep track of generated steps in case want to plot something 
+        print()
+        for i in range(self.n_T, 0, -1):
+            print(f'sampling timestep {i}',end='\r')
+            t_is = torch.tensor([i / self.n_T]).to(device)
+            t_is = t_is.repeat(n_sample,1,1,1)
+
+            # double batch
+            x_i = x_i.repeat(2,1,1,1)
+            t_is = t_is.repeat(2,1,1,1)
+
+            z = torch.randn(n_sample, *size).to(device) if i > 1 else 0
+
+            # split predictions and compute weighting
+            eps = self.nn_model(x_i, c_i, t_is, context_mask)
+            eps1 = eps[:n_sample]
+            eps2 = eps[n_sample:]
+            eps = (1+guide_w)*eps1 - guide_w*eps2
+            x_i = x_i[:n_sample]
+            x_i = (
+                self.oneover_sqrta[i] * (x_i - eps * self.mab_over_sqrtmab[i])
+                + self.sqrt_beta_t[i] * z
+            )
+            if i%20==0 or i==self.n_T or i<8:
+                x_i_store.append(x_i.detach().cpu().numpy())
         
+        x_i_store = np.array(x_i_store)
+        return x_i, x_i_store
         
 
-    def sample(self, model, n, y=None):
-        '''
-        This function is used  to generate images.
-
-        model: The denoising auto-encoder epsilon_{theta}
-        n: The number of images you want to generate
-        y: A 1D binary vector of size n indicating the
-            desired gender for the generated face.
-        '''
-        model.eval()
-        with torch.no_grad():
-            ################## YOUR CODE HERE ##################
-            # Write code for the sampling process here.
-            # This process starts with x_T and progresses to x_0, T=1000
-            # Reference *Algorithm 2* in "Denoising Diffusion Probabilistic Models" by Jonathan Ho et al.
-            #
-            # Start with x_T drawn from the standard normal distribution.
-            # x_T has dimensions n x 3 x H x W.
-            # H = W = 64 are the dimensions of the image for this assignment.
-            #
-            # Then for t = 1000 -> 1
-            #     (1) Call the model to calculate \epsilon_{\theta}(x_t, t)
-            #     (2) Use the formula from above to calculate \mu_{\theta} from \epsilon_{\theta}
-            #     (3) Add zero-mean Gaussian noise with variance \beta_t to \mu_{\theta}
-            #         this yields x_{t-1}
-            #
-            # Skip step (3) if t=1, because x_0 is the final image. It makes no sense to add noise to
-            # the final product.
-
-            ####################################################
-            # Start with x_T drawn from standard normal distribution
-            x_t = torch.randn((n, 3, self.img_size, self.img_size), device=self.device)
-            
-            # Ensure y matches the batch size `n`
-            if y is not None:
-                y = y[:n]  # Ensure `y` has the correct size
-    
-            for t in range(self.num_timesteps - 1, -1, -1):
-                # Create a tensor with current timestep for model input
-                t_tensor = torch.full((n,), t, device=self.device, dtype=torch.long)
-    
-                # (1) Call the model to predict epsilon
-                if y is not None:
-                    epsilon_theta = model(x_t, t_tensor, y)
-                else:
-                    epsilon_theta = model(x_t, t_tensor)
-    
-                # (2) Calculate mean (mu_theta) for the next step
-                alpha_t = self.alpha[t]
-                alpha_bar_t = self.alpha_bar[t]
-                mean = (1 / torch.sqrt(alpha_t)) * (x_t - (1 - alpha_t) / torch.sqrt(1 - alpha_bar_t) * epsilon_theta)
-    
-                # (3) Add Gaussian noise if t > 1
-                if t > 1:
-                    noise = torch.randn_like(x_t)
-                    x_t = mean + torch.sqrt(self.beta[t]) * noise
-                else:
-                    x_t = mean  # Final image without added noise
-                    
-        model.train()
-        x_t = (x_t.clamp(-1, 1) + 1) / 2
-        x_t = (x_t * 255).type(torch.uint8)
-        return x_t
 
 
 def main():
-    # Hyperparameters
     num_epochs = 30
-    batch_size = 4  # Small batch size per gradient step
-    accumulate_steps = 8  # Number of steps for gradient accumulation
-    effective_batch_size = batch_size * accumulate_steps  # Effective batch size
-    save_path = 'diffusion_checkpoint.pth'
-    save_interval = 100
+    batch_size = 8
     img_size = 128
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    save_path = "diffusion_checkpoint.pth"
 
-    # Dataset and DataLoader
     transform = transforms.Compose([
-        transforms.Resize(int(img_size * 1.2)),  # Resize to 20% larger
-        transforms.RandomCrop(img_size),        # Random crop to target size
-        transforms.ColorJitter(0.2, 0, 0, 0),   # Apply brightness jitter
-        transforms.ToTensor(),                  # Convert to tensor
-        transforms.Normalize(mean=0.5, std=0.5) # Normalize to [-1, 1]
+        transforms.Resize((img_size, img_size)),
+        transforms.ToTensor(),
+        transforms.Normalize(0.5, 0.5),
     ])
     dataset = ISICDataset(transform=transform)
-    dataloader = torch.utils.data.DataLoader(
-        dataset, 
-        batch_size=effective_batch_size,  # Load effective batch size
-        shuffle=True, 
-        drop_last=True, 
-        persistent_workers=True, 
-        num_workers=2
-    )
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
-    # Models
     classifier = DeepDermClassifier().to(device)
-    classifier.eval()
-    model = UNet(c_in=3, c_out=3, conditional=True).to(device)
-    diffusion = Diffusion(img_size=img_size, device=device)
+    ddpm = DDPM(ContextUnet(3, 128, n_classes=10), (1e-4, 0.02), 400, device).to(device)
+    optimizer = torch.optim.Adam(ddpm.parameters(), lr=1e-4)
 
-    # Optimizer
-    optimizer = torch.optim.Adam(model.parameters(), lr=2e-4)
-
-    # Loss function
-    criterion = torch.nn.MSELoss()
-
-    # Specify the positive class index
-    positive_index = classifier.positive_index  # `1` for the positive class
-
-    # Training loop
     writer = SummaryWriter()
     for epoch in range(num_epochs):
-        pbar = tqdm(dataloader)
-        total_loss = 0
-        for batch in pbar:
-            images, _ = batch  # Assuming the dataset returns (image, label)
-            images = images.to(device)
-
-            # Split into smaller batches for gradient accumulation
+        ddpm.train()
+        for batch in tqdm(dataloader, desc=f"Epoch {epoch + 1}"):
+            images, labels = batch
+            images, labels = images.to(device).float(), labels.to(device).long()
             optimizer.zero_grad()
-            for step in range(accumulate_steps):
-                start = step * batch_size
-                end = (step + 1) * batch_size
-                images_step = images[start:end]  # Slice smaller batch
-
-                # Get noisy images and noise
-                timesteps = torch.randint(0, diffusion.num_timesteps, (batch_size,), device=device)
-                noisy_images, noise = diffusion.get_noisy_image(images_step, timesteps)
-
-                # Get the probability of the positive class from DeepDermClassifier
-                y_prob = classifier(images_step)[:, positive_index]
-
-                # Predict noise using UNet
-                predicted_noise = model(noisy_images, timesteps, y=y_prob)
-
-                # Compute loss and accumulate gradients
-                loss = criterion(predicted_noise, noise) / accumulate_steps
-                loss.backward()
-                total_loss += loss.item()
-
-            # Update parameters after accumulating gradients
+            loss = ddpm(images, labels)
+            loss.backward()
             optimizer.step()
-            pbar.set_description(f"Epoch {epoch+1}, Loss: {loss.item():.4f}")
-
-        writer.add_scalar('Loss/train', total_loss / len(dataloader), epoch)
-
-        # Save checkpoint every epoch
-        torch.save({'model': model.state_dict(),
-                    'optimizer': optimizer.state_dict(),
-                    'epoch': epoch}, save_path)
-
-        # Backup every `save_interval` epochs
-        if epoch % save_interval == 0:
-            torch.save({'model': model.state_dict(),
-                        'optimizer': optimizer.state_dict(),
-                        'epoch': epoch}, f"{save_path}.{epoch}")
-
+            writer.add_scalar("Loss/train", loss.item(), epoch)
+        torch.save({"model": ddpm.state_dict(), "optimizer": optimizer.state_dict()}, save_path)
     writer.close()
+
 
 if __name__ == "__main__":
     main()
-
