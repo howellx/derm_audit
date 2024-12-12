@@ -2,7 +2,7 @@ __pycache__/
 data/
 pretrained_classifiers/
 runs/
-out/
+
 deepderm_isic.csv
 
 datasets/__pycache__
