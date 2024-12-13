@@ -133,7 +133,7 @@ def main():
                 step_combined[:, x_start:x_start+224, :] = step_img
 
             # Save combined grid of steps
-            step_grid_path = os.path.join(outdir, f"{index:05d}_mel_steps_combined.png")
+            step_grid_path = os.path.join(outdir, f"{index:05d}_benign_steps_combined.png")
             Image.fromarray(step_combined).save(step_grid_path)   
             
 			# Save intermediate steps
@@ -152,7 +152,7 @@ def main():
                 step_combined[:, x_start:x_start+224, :] = step_img
 
             # Save combined grid of steps
-            step_grid_path = os.path.join(outdir, f"{index:05d}_benign_steps_combined.png")
+            step_grid_path = os.path.join(outdir, f"{index:05d}_mel_steps_combined.png")
             Image.fromarray(step_combined).save(step_grid_path)      
 
 if __name__ == "__main__":
