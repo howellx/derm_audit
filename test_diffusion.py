@@ -67,7 +67,7 @@ def main():
     ddpm.load_state_dict(checkpoint['model'])
     ddpm.eval()
 
-    classifier.to(Device)
+    classifier.to(DEVICE)
 
     try: classifier.enable_augment()
     except AttributeError: pass
@@ -108,8 +108,8 @@ def main():
             samples.append(x_gen_benign)
 
             pred_orig = classifier(images)[:,positive_index]
-            pred_mel = classifier(x_gen_mel)[:,positiveindex]
-            pred_ben = classifier(x_gen_benign)[:,positiveindex]
+            pred_mel = classifier(x_gen_mel)[:,positive_index]
+            pred_ben = classifier(x_gen_benign)[:,positive_index]
 
         # Save images
         for i in range(images.size(0)):
@@ -118,9 +118,9 @@ def main():
             orig_label = labels[i].item()
 
             #these three lines may need to be placed within the next nested for loop
-            pred_orig_ = pred_orig[i_img].detach().cpu().numpy()
-            pred_mel_ = pred_mel[i_img].detach().cpu().numpy()
-            pred_ben_ = pred_ben[i_img].detach().cpu().numpy()
+            pred_orig_ = pred_orig[i].detach().cpu().numpy()
+            pred_mel_ = pred_mel[i].detach().cpu().numpy()
+            pred_ben_ = pred_ben[i].detach().cpu().numpy()
 
             # Create combined image (original + melanoma + benign)
             combined_width = 224 * 3 + IMG_OFFSET * 2
