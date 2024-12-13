@@ -9,10 +9,13 @@ from tqdm import tqdm
 from datasets import ISICDataset  # Replace with your dataset
 from models import DeepDermClassifier  # Replace with your classifier
 from diffusion import DDPM, ContextUnet  # Correctly import DDPM and ContextUnet
+from models import DeepDermClassifier
+from evaluate_classifiers import CLASSIFIER_CLASS, DATASET_CLASS
+
 
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 IMG_OFFSET = 10  # Reduced offset for tighter spacing
-
+DEFAULT_CLASSIFIER = DeepDermClassifier
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint_path", type=str, default="diffusion_checkpoint.pth")
@@ -20,6 +23,7 @@ def main():
     parser.add_argument("--max_images", type=int, default=40)
     parser.add_argument("--batch_size", type=int, default=4)
     parser.add_argument("--guide_w", type=float, default=2.0)
+    parser.add_argument("--classifier", type=str, choices=["deepderm", "modelderm", "scanoma", "sscd", "siimisic", "from_file"], default="deepderm")
     args = parser.parse_args()
 
     outdir = args.output
@@ -27,6 +31,15 @@ def main():
         print(f"...Creating output directory {outdir}")
         os.mkdir(outdir)
 
+    if args.classifier == "from_file":
+        classifier_class = DEFAULT_CLASSIFIER
+    else:
+        classifier_class = CLASSIFIER_CLASS[args.classifier]
+
+    classifier = classifier_class()
+    positive_index = classifier.positive_index
+    classifier.eval()
+    im_size = classifier.image_size
     # Setup data loading
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
@@ -53,6 +66,11 @@ def main():
     checkpoint = torch.load(args.checkpoint_path, map_location=DEVICE)
     ddpm.load_state_dict(checkpoint['model'])
     ddpm.eval()
+
+    classifier.to(Device)
+
+    try: classifier.enable_augment()
+    except AttributeError: pass
 
     # Sampling loop
     for ibatch, batch in enumerate(tqdm(dataloader)):
@@ -89,11 +107,20 @@ def main():
             )
             samples.append(x_gen_benign)
 
+            pred_orig = classifier(images)[:,positive_index]
+            pred_mel = classifier(x_gen_mel)[:,positiveindex]
+            pred_ben = classifier(x_gen_benign)[:,positiveindex]
+
         # Save images
         for i in range(images.size(0)):
             index = i + ibatch * args.batch_size
             orig_img = images[i].cpu().numpy().transpose(1, 2, 0)
             orig_label = labels[i].item()
+
+            #these three lines may need to be placed within the next nested for loop
+            pred_orig_ = pred_orig[i_img].detach().cpu().numpy()
+            pred_mel_ = pred_mel[i_img].detach().cpu().numpy()
+            pred_ben_ = pred_ben[i_img].detach().cpu().numpy()
 
             # Create combined image (original + melanoma + benign)
             combined_width = 224 * 3 + IMG_OFFSET * 2
@@ -115,6 +142,19 @@ def main():
             # Save
             output_path = os.path.join(outdir, f"{index:05d}_orig{int(orig_label)}_mel_benign.png")
             Image.fromarray(combined).save(output_path)
+            
+            #somewhere in the end here we can put in the prediction alongside the image
+            '''
+            out_img = Image.fromarray(full)
+            out_img.save(os.path.join(outdir, 
+                    "{:05d}_{:d}_{:.03f}_{:.03f}_{:.03f}.png"\
+                    .format(index, 
+                            int(orig_label), 
+                            pred_orig_, 
+                            pred_meln_, 
+                            pred_ben_))
+                         )
+            '''
 
 if __name__ == "__main__":
     main()
