@@ -1,0 +1,36 @@
+Notes:
+The firstworking code seems to be outputting skin features
+	-No longer outputting gray or random pixels
+	-Seems to alternate between benign and malignant features for sampling, not sure
+
+Future modifications:
+Add two sample generations in test
+	-x_gen_melanoma: condition with 1s
+	-x_gen_benign: condition with 0s
+
+Change the sample thing to not only create new image, but condition those samples
+
+Currently:
+
+        x_i = torch.randn(n_sample, *size).to(device)
+        
+        # Create binary class indices
+        c_i = torch.arange(0, 2).to(device)  # [0, 1] for binary classification
+        c_i = c_i.repeat(int(n_sample/c_i.shape[0]))
+
+Change to: 
+
+	if x_init is not None:
+		x_i = x_init.clone()
+	    else:
+		x_i = torch.randn(n_sample, *size).to(device)
+	    
+	    # Use provided condition if given
+	    if condition is not None:
+		c_i = condition
+	    else:
+		c_i = torch.arange(0, 2).to(device)
+		c_i = c_i.repeat(int(n_sample/c_i.shape[0]))
+
+	This is because this one will not randomly choose between 1 and 0 when sampling, it will 
+	let us put both conditioned outputs side by side

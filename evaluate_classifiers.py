@@ -7,13 +7,14 @@ from torchvision import transforms
 from tqdm import tqdm
 
 from models import DeepDermClassifier 
-from models import ModelDermClassifier 
+#from models import ModelDermClassifier 
 from models import ScanomaClassifier 
 from models import SSCDClassifier 
 from models import SIIMISICClassifier
 import datasets
 
-DEVICE = 'cuda'
+DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+
 
 OUTPATHS = {
         'scanoma':
@@ -42,7 +43,7 @@ CLASSIFIER_CLASS = {
         'scanoma': ScanomaClassifier,
         'sscd': SSCDClassifier,
         'deepderm': DeepDermClassifier,
-        'modelderm': ModelDermClassifier,
+        # 'modelderm': ModelDermClassifier,
         'siimisic': SIIMISICClassifier
         }
 
@@ -116,10 +117,14 @@ def basic_test(model_name, dataset_name):
     df.to_csv(outpath)
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--classifier', type=str, choices=CLASSIFIER_CLASS.keys())
-    parser.add_argument('--dataset', type=str, choices=DATASET_CLASS.keys())
-    args = parser.parse_args()
+    # parser = argparse.ArgumentParser()
+    # parser.add_argument('--classifier', type=str, choices=CLASSIFIER_CLASS.keys())
+    # parser.add_argument('--dataset', type=str, choices=DATASET_CLASS.keys())
+    # args = parser.parse_args()
+    
+    args = argparse.Namespace(classifier='deepderm', dataset='isic')
+    print(f"Using classifier: {args.classifier}")
+    print(f"Using dataset: {args.dataset}")
     basic_test(args.classifier, args.dataset)
 
 if __name__ == "__main__":

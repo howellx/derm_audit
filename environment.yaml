@@ -157,6 +157,5 @@ dependencies:
   - zlib=1.2.11=h7b6447c_3
   - zstd=1.4.9=haebb681_0
   - pip:
-    - --no-deps
     - onnx2pytorch==0.4.0
 prefix: /homes/gws/degrave/apps/anaconda3/envs/torch9

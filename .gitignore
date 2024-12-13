@@ -1,0 +1,16 @@
+__pycache__/
+data/
+pretrained_classifiers/
+runs/
+
+deepderm_isic.csv
+
+datasets/__pycache__
+datasets/ddidiversedermatologyimages
+datasets/fitzpatrick
+datasets/ISIC_2019_Test_Input
+
+models/__pycache__
+models/12dx
+models/6784279
+models/10049217
