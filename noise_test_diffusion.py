@@ -117,7 +117,7 @@ def main():
             Image.fromarray(combined).save(output_path)
             
             
-            # Save intermediate steps
+            # Save intermediate steps for benign 
             step_images = []
             for step_idx, step_img in enumerate(x_benign_store):
                 step_img_i = step_img[i].transpose(1, 2, 0)
@@ -125,18 +125,16 @@ def main():
                 step_img_i = np.clip(step_img_i, 0, 255).astype(np.uint8)
                 step_images.append(step_img_i)
 
-            # Optionally, create a single grid image of all intermediate steps
+            # save images to one file
             step_combined_width = 224 * len(step_images) + IMG_OFFSET * (len(step_images) - 1)
             step_combined = np.ones((224, step_combined_width, 3), dtype=np.uint8) * 255
             for j, step_img in enumerate(step_images):
                 x_start = j * (224 + IMG_OFFSET)
                 step_combined[:, x_start:x_start+224, :] = step_img
-
-            # Save combined grid of steps
             step_grid_path = os.path.join(outdir, f"{index:05d}_benign_steps_combined.png")
             Image.fromarray(step_combined).save(step_grid_path)   
             
-			# Save intermediate steps
+			# Save intermediate steps for mal
             step_images = []
             for step_idx, step_img in enumerate(x_mel_store):
                 step_img_i = step_img[i].transpose(1, 2, 0)
@@ -144,14 +142,11 @@ def main():
                 step_img_i = np.clip(step_img_i, 0, 255).astype(np.uint8)
                 step_images.append(step_img_i)
 
-            # Optionally, create a single grid image of all intermediate steps
             step_combined_width = 224 * len(step_images) + IMG_OFFSET * (len(step_images) - 1)
             step_combined = np.ones((224, step_combined_width, 3), dtype=np.uint8) * 255
             for j, step_img in enumerate(step_images):
                 x_start = j * (224 + IMG_OFFSET)
                 step_combined[:, x_start:x_start+224, :] = step_img
-
-            # Save combined grid of steps
             step_grid_path = os.path.join(outdir, f"{index:05d}_mel_steps_combined.png")
             Image.fromarray(step_combined).save(step_grid_path)      
 
