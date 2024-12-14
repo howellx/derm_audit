@@ -17,7 +17,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint_path", type=str, default="diffusion_checkpoint.pth")
     parser.add_argument("--output", type=str, default="out")
-    parser.add_argument("--max_images", type=int, default=40)
+    parser.add_argument("--max_images", type=int, default=200)
     parser.add_argument("--batch_size", type=int, default=4)
     parser.add_argument("--guide_w", type=float, default=2.0)
     args = parser.parse_args()

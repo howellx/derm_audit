@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+import csv
 import argparse
 import os
 
@@ -31,15 +31,21 @@ def main():
     parser.add_argument("--dataset", type=str, choices=["f17k", "isic", "ddi", "from_file"], default="isic")
     parser.add_argument("--classifier", type=str, choices=["deepderm", "modelderm", "scanoma", "sscd", "siimisic", "from_file"], default="deepderm")
     parser.add_argument("--output", type=str, default="out")
-    parser.add_argument("--max_images", type=int, default=40)
+    parser.add_argument("--csv_file", type=str, default="./out/results.csv")
+    parser.add_argument("--max_images", type=int, default=500)
     parser.add_argument("--batch_size", type=int, default=4)
     args = parser.parse_args()
-
 
     outdir = args.output
     if not os.path.exists(outdir):
         print(f"...Creating output directory {outdir}")
         os.mkdir(outdir)
+
+    csv_file_path = args.csv_file
+    with open(csv_file_path, mode='w', newline='') as csvfile:
+        csv_writer = csv.writer(csvfile)
+        csv_writer.writerow(["Index", "Original Label", "Prediction Original", "Prediction Min", "Prediction Max"])
+
     checkpoint_path = args.checkpoint_path
 
     if args.dataset == "from_file":
@@ -102,34 +108,40 @@ def main():
             pred_min = classifier(img_min)[:,positive_index]
             pred_max = classifier(img_max)[:,positive_index]
 
-        # save images separately
-        for i_img in range(img.shape[0]):
-            index = i_img + ibatch*args.batch_size
-            orig = img[i_img].detach().cpu().numpy()
-            min_ = img_min[i_img].detach().cpu().numpy()
-            max_ = img_max[i_img].detach().cpu().numpy()
-            orig_label = label[i_img]
-            pred_orig_ = pred_orig[i_img].detach().cpu().numpy()
-            pred_min_ = pred_min[i_img].detach().cpu().numpy()
-            pred_max_ = pred_max[i_img].detach().cpu().numpy()
+        # save images and write to CSV
+        with open(csv_file_path, mode='a', newline='') as csvfile:
+            csv_writer = csv.writer(csvfile)
 
-            full = np.ones((im_size, im_size*3+IMG_OFFSET, 3))
-            full[:,:im_size,:] = orig.swapaxes(0,1).swapaxes(1,2)
-            full[:,IMG_OFFSET+im_size:IMG_OFFSET+2*im_size,:] = min_.swapaxes(0,1).swapaxes(1,2)
-            full[:,IMG_OFFSET+2*im_size:,:] = max_.swapaxes(0,1).swapaxes(1,2)
-            full *= 0.5
-            full += 0.5
-            full *= 255
-            full = np.require(full, dtype=np.uint8)
-            out_img = Image.fromarray(full)
-            out_img.save(os.path.join(outdir, 
-                    "{:05d}_{:d}_{:.03f}_{:.03f}_{:.03f}.png"\
-                    .format(index, 
-                            int(orig_label), 
-                            pred_orig_, 
-                            pred_min_, 
-                            pred_max_))
-                         )
+            for i_img in range(img.shape[0]):
+                index = i_img + ibatch*args.batch_size
+                orig = img[i_img].detach().cpu().numpy()
+                min_ = img_min[i_img].detach().cpu().numpy()
+                max_ = img_max[i_img].detach().cpu().numpy()
+                orig_label = label[i_img]
+                pred_orig_ = pred_orig[i_img].detach().cpu().numpy()
+                pred_min_ = pred_min[i_img].detach().cpu().numpy()
+                pred_max_ = pred_max[i_img].detach().cpu().numpy()
+
+                full = np.ones((im_size, im_size*3+IMG_OFFSET, 3))
+                full[:,:im_size,:] = orig.swapaxes(0,1).swapaxes(1,2)
+                full[:,IMG_OFFSET+im_size:IMG_OFFSET+2*im_size,:] = min_.swapaxes(0,1).swapaxes(1,2)
+                full[:,IMG_OFFSET+2*im_size:,:] = max_.swapaxes(0,1).swapaxes(1,2)
+                full *= 0.5
+                full += 0.5
+                full *= 255
+                full = np.require(full, dtype=np.uint8)
+                out_img = Image.fromarray(full)
+                out_img.save(os.path.join(outdir, 
+                        "{:05d}_{:d}_{:.03f}_{:.03f}_{:.03f}.png"\
+                        .format(index, 
+                                int(orig_label), 
+                                pred_orig_, 
+                                pred_min_, 
+                                pred_max_)))
+
+                # Write to CSV
+                csv_writer.writerow([index, int(orig_label), pred_orig_, pred_min_, pred_max_])
 
 if __name__ == "__main__":
     main()
+
