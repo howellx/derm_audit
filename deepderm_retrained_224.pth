@@ -7,7 +7,6 @@ batch_size = 32
 num_epochs = 10
 learning_rate = 0.001
 
-# Prepare Dataset
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
@@ -22,15 +21,12 @@ train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
-# Initialize Model
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 model = DeepDermClassifier224(pretrained=True).to(device)
 
-# Loss and Optimizer
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
-# Training Loop
 for epoch in range(num_epochs):
     model.train()
     running_loss = 0.0
@@ -48,7 +44,6 @@ for epoch in range(num_epochs):
 
     print(f"Epoch {epoch+1}/{num_epochs}, Loss: {running_loss/len(train_loader):.4f}")
 
-    # Validation Step
     model.eval()
     correct = 0
     total = 0
@@ -63,5 +58,4 @@ for epoch in range(num_epochs):
 
     print(f"Validation Accuracy: {100 * correct / total:.2f}%")
 
-# Save the Retrained Model
 torch.save(model.state_dict(), 'deepderm_retrained_224.pth')
