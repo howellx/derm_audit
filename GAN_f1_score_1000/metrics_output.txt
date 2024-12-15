@@ -5,7 +5,7 @@ Best Precision and Recall: 0.5018315018315018, 0.7025641025641025
 Best F1-Score: 0.5854700854700855
 
 Counterfactual Images:
-Score Best Threshold: 0.46332297
+Score Best Threshold: 0.46332228
 Best Precision and Recall: 0.9809428284854563, 0.9741035856573705
 Best F1-Score: 0.977511244377811
 

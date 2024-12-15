@@ -12,11 +12,12 @@ pred_mal = []
 mal = []
 benign = []
 
-if not os.path.exists('./f1_score/'):
-	print(f"...Creating output directory {'./f1_score/'}")
+outdir = './f1_score/'
+if not os.path.exists(outdir):
+	print(f"...Creating output directory {outdir}")
 	os.mkdir(outdir)
 
-output_text_file = "./f1_score/metrics_output.txt"
+output_text_file = outdir + "metrics_output.txt"
 csv_file_path = "./out/results.csv"
 
 with open(csv_file_path, mode='r') as csvfile, open(output_text_file, mode='w') as outfile:
@@ -41,7 +42,7 @@ with open(csv_file_path, mode='r') as csvfile, open(output_text_file, mode='w') 
     inverse_scores_orig = [1 - s for s in pred_orig]
     precision_orig, recall_orig, thresholds_orig = precision_recall_curve(original_labels, pred_orig, pos_label=1)
 
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(10, 6))
     ax.plot(recall_orig, precision_orig)
     plt.xlim([0, 1])
     plt.ylim([0, 1])
@@ -53,7 +54,7 @@ with open(csv_file_path, mode='r') as csvfile, open(output_text_file, mode='w') 
     plt.grid(b=True, which='major', color='#999999', linestyle='-')
     plt.minorticks_on()
     plt.grid(b=True, which='minor', color='#999999', linestyle='-', alpha=0.2)
-    plt.savefig("./f1_score/original_images_plot.png", dpi=300)
+    plt.savefig(outdir + "original_images_plot.png", dpi=300)
     plt.close()
 
     numerator_orig = 2 * recall_orig * precision_orig
@@ -77,7 +78,7 @@ with open(csv_file_path, mode='r') as csvfile, open(output_text_file, mode='w') 
         counterfactual, pred_counterfactual, pos_label=1
     )
 
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(10, 6))
     ax.plot(recall_counterfactual, precision_counterfactual)
     plt.xlim([0, 1])
     plt.ylim([0, 1])
@@ -89,7 +90,7 @@ with open(csv_file_path, mode='r') as csvfile, open(output_text_file, mode='w') 
     plt.grid(b=True, which='major', color='#999999', linestyle='-')
     plt.minorticks_on()
     plt.grid(b=True, which='minor', color='#999999', linestyle='-', alpha=0.2)
-    plt.savefig("./f1_score/counterfactual_images_plot.png", dpi=300)
+    plt.savefig(outdir + "counterfactual_images_plot.png", dpi=300)
     plt.close()
 
     numerator_counterfactual = 2 * recall_counterfactual * precision_counterfactual
@@ -116,7 +117,7 @@ with open(csv_file_path, mode='r') as csvfile, open(output_text_file, mode='w') 
         combined, pred_combined, pos_label=1
     )
 
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(10, 6))
     ax.plot(recall_combined, precision_combined)
     plt.xlim([0, 1])
     plt.ylim([0, 1])
@@ -128,7 +129,7 @@ with open(csv_file_path, mode='r') as csvfile, open(output_text_file, mode='w') 
     plt.grid(b=True, which='major', color='#999999', linestyle='-')
     plt.minorticks_on()
     plt.grid(b=True, which='minor', color='#999999', linestyle='-', alpha=0.2)
-    plt.savefig("./f1_score/combined_images_plot.png", dpi=300)
+    plt.savefig(outdir + "combined_images_plot.png", dpi=300)
     plt.close()
 
     numerator_combined = 2 * recall_combined * precision_combined

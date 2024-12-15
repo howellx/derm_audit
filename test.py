@@ -32,7 +32,7 @@ def main():
     parser.add_argument("--classifier", type=str, choices=["deepderm", "modelderm", "scanoma", "sscd", "siimisic", "from_file"], default="deepderm")
     parser.add_argument("--output", type=str, default="out")
     parser.add_argument("--csv_file", type=str, default="./out/results.csv")
-    parser.add_argument("--max_images", type=int, default=500)
+    parser.add_argument("--max_images", type=int, default=1000)
     parser.add_argument("--batch_size", type=int, default=4)
     args = parser.parse_args()
 
