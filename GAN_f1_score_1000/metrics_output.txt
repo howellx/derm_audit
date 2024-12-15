@@ -1,5 +1,5 @@
 Class Distribution: [809 195]
-Original Images:
+GAN Original Images:
 Score Best Threshold: 0.904738
 Best Precision and Recall: 0.5018315018315018, 0.7025641025641025
 Best F1-Score: 0.5854700854700855
