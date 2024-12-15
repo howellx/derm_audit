@@ -52,14 +52,14 @@ def main():
         num_workers=2
     )
 
-    # 加载生成器
+    # 
     generator = Generator(im_size=224)
     checkpoint = torch.load(checkpoint_path, map_location=DEVICE)
     generator.load_state_dict(checkpoint['generator'])
     generator.to(DEVICE)
     generator.eval()
 
-    # 加载分类器
+    # 
     classifier = DeepDermClassifier()
     positive_index = classifier.positive_index
     classifier.to(DEVICE)
@@ -138,7 +138,7 @@ def main():
     roc_auc_min = auc(fpr_min, tpr_min)
     roc_auc_max = auc(fpr_max, tpr_max)
 
-    # 绘制 AUROC 曲线
+    # 
     plt.figure()
     plt.plot(fpr_orig, tpr_orig, color='darkorange', lw=2, label='Prediction Original (area = {:.2f})'.format(roc_auc_orig))
     plt.plot(fpr_min, tpr_min, color='green', lw=2, label='Min Generated (area = {:.2f})'.format(roc_auc_min))
