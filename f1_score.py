@@ -12,13 +12,13 @@ pred_mal = []
 mal = []
 benign = []
 
-outdir = './f1_score/'
+outdir = './f1_score_diffusion_1000/'
 if not os.path.exists(outdir):
 	print(f"...Creating output directory {outdir}")
 	os.mkdir(outdir)
 
 output_text_file = outdir + "metrics_output.txt"
-csv_file_path = "./out/results.csv"
+csv_file_path = "./out_diffusion/diffusion_results_1000.csv"
 
 with open(csv_file_path, mode='r') as csvfile, open(output_text_file, mode='w') as outfile:
     csv_reader = csv.reader(csvfile)
@@ -27,7 +27,7 @@ with open(csv_file_path, mode='r') as csvfile, open(output_text_file, mode='w') 
 
     for row in csv_reader:
         # Assuming the second column contains the original labels
-        original_labels.append(int(row[1]))
+        original_labels.append(int(float(row[1])))
         pred_orig.append(float(row[2]))
         pred_benign.append(float(row[3]))
         pred_mal.append(float(row[4]))
@@ -66,7 +66,7 @@ with open(csv_file_path, mode='r') as csvfile, open(output_text_file, mode='w') 
     best_recall_orig = recall_orig[np.argmax(f1_scores_orig)]
     best_f1_score_orig = np.max(f1_scores_orig)
 
-    outfile.write(f"GAN Original Images:\n")
+    outfile.write(f"Diffusion Original Images:\n")
     outfile.write(f"Score Best Threshold: {best_threshold_orig}\n")
     outfile.write(f"Best Precision and Recall: {best_precision_orig}, {best_recall_orig}\n")
     outfile.write(f"Best F1-Score: {best_f1_score_orig}\n\n")
@@ -86,7 +86,7 @@ with open(csv_file_path, mode='r') as csvfile, open(output_text_file, mode='w') 
     plt.yticks(fontsize=18)
     plt.ylabel('Precision', fontsize=18)
     plt.xlabel('Recall', fontsize=18)
-    plt.title('GAN Counterfactual Images')
+    plt.title('Diffusion Counterfactual Images')
     plt.grid(b=True, which='major', color='#999999', linestyle='-')
     plt.minorticks_on()
     plt.grid(b=True, which='minor', color='#999999', linestyle='-', alpha=0.2)
@@ -125,7 +125,7 @@ with open(csv_file_path, mode='r') as csvfile, open(output_text_file, mode='w') 
     plt.yticks(fontsize=18)
     plt.ylabel('Precision', fontsize=18)
     plt.xlabel('Recall', fontsize=18)
-    plt.title('GAN Combined Images')
+    plt.title('Diffusion Combined Images')
     plt.grid(b=True, which='major', color='#999999', linestyle='-')
     plt.minorticks_on()
     plt.grid(b=True, which='minor', color='#999999', linestyle='-', alpha=0.2)

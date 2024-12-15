@@ -1,0 +1,15 @@
+Class Distribution: [805 195]
+Diffusion Original Images:
+Score Best Threshold: 0.87927806
+Best Precision and Recall: 0.453125, 0.5948717948717949
+Best F1-Score: 0.5144124168514411
+
+Counterfactual Images:
+Score Best Threshold: 0.15420417
+Best Precision and Recall: 0.5925233644859813, 0.951
+Best F1-Score: 0.7301343570057581
+
+Combined Images:
+Score Best Threshold: 0.47409824
+Best Precision and Recall: 0.5551894563426688, 0.8460251046025105
+Best F1-Score: 0.6704244031830239
