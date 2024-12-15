@@ -3,6 +3,7 @@ import pandas as pd
 from sklearn.metrics import precision_recall_curve
 import csv
 import matplotlib.pyplot as plt
+import os
 
 original_labels = []
 pred_orig = []
@@ -10,6 +11,10 @@ pred_benign = []
 pred_mal = []
 mal = []
 benign = []
+
+if not os.path.exists('./f1_score/'):
+	print(f"...Creating output directory {'./f1_score/'}")
+	os.mkdir(outdir)
 
 output_text_file = "./f1_score/metrics_output.txt"
 csv_file_path = "./out/results.csv"

@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python
 import argparse
 import os
@@ -8,7 +9,7 @@ from torchvision import transforms
 from tqdm import tqdm
 from datasets import ISICDataset  # Replace with your dataset
 from models import DeepDermClassifier  # Replace with your classifier
-from noise_diffusion import DDPM, ContextUnet  # Correctly import DDPM and ContextUnet
+from diffusion import DDPM, ContextUnet  # Correctly import DDPM and ContextUnet
 
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 IMG_OFFSET = 10  # Reduced offset for tighter spacing
@@ -16,8 +17,8 @@ IMG_OFFSET = 10  # Reduced offset for tighter spacing
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint_path", type=str, default="diffusion_checkpoint.pth")
-    parser.add_argument("--output", type=str, default="out")
-    parser.add_argument("--max_images", type=int, default=40)
+    parser.add_argument("--output", type=str, default="out_noise")
+    parser.add_argument("--max_images", type=int, default=2)
     parser.add_argument("--batch_size", type=int, default=4)
     parser.add_argument("--guide_w", type=float, default=2.0)
     args = parser.parse_args()
@@ -116,7 +117,6 @@ def main():
             output_path = os.path.join(outdir, f"{index:05d}_orig{int(orig_label)}_mel_benign.png")
             Image.fromarray(combined).save(output_path)
             
-            
             # Save intermediate steps for benign 
             step_images = []
             for step_idx, step_img in enumerate(x_benign_store):
@@ -124,6 +124,10 @@ def main():
                 step_img_i = (step_img_i + 1) / 2 * 255
                 step_img_i = np.clip(step_img_i, 0, 255).astype(np.uint8)
                 step_images.append(step_img_i)
+                
+                # Save each intermediate step
+                step_output_path = os.path.join(outdir, f"{index:05d}_benign_step{step_idx:03d}.png")
+                Image.fromarray(step_img_i).save(step_output_path)
 
             # save images to one file
             step_combined_width = 224 * len(step_images) + IMG_OFFSET * (len(step_images) - 1)
@@ -141,6 +145,10 @@ def main():
                 step_img_i = (step_img_i + 1) / 2 * 255
                 step_img_i = np.clip(step_img_i, 0, 255).astype(np.uint8)
                 step_images.append(step_img_i)
+                
+                # Save each intermediate step
+                step_output_path = os.path.join(outdir, f"{index:05d}_mal_step{step_idx:03d}.png")
+                Image.fromarray(step_img_i).save(step_output_path)
 
             step_combined_width = 224 * len(step_images) + IMG_OFFSET * (len(step_images) - 1)
             step_combined = np.ones((224, step_combined_width, 3), dtype=np.uint8) * 255
@@ -148,7 +156,7 @@ def main():
                 x_start = j * (224 + IMG_OFFSET)
                 step_combined[:, x_start:x_start+224, :] = step_img
             step_grid_path = os.path.join(outdir, f"{index:05d}_mel_steps_combined.png")
-            Image.fromarray(step_combined).save(step_grid_path)      
+            Image.fromarray(step_combined).save(step_grid_path)    
 
 if __name__ == "__main__":
     main()
