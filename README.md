@@ -2,6 +2,8 @@
 ___
 This is based on [suinleelab/derm_audit](https://github.com/suinleelab/derm_audit).
 
+This supplementary material and code for our [Report](./Project_Report.pdf), for the EC523 Deep Learning course at Boston University.
+
 We provide set-up instructions specific to Boston University's SCC for those have access and wish to use it in [SCC_setup](./SCC_setup.md).
 
 ## Instructions for Running
