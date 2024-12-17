@@ -19,13 +19,18 @@ class DeepDermClassifier(torch.nn.Module):
         self.model = torchvision.models.inception_v3(init_weights=False)
         self.model.fc = torch.nn.Linear(2048, 2)
         self.model.AuxLogits.fc = torch.nn.Linear(768, 2)
-        state_dict = torch.load(model_path)
+
+        # Handle CUDA/CPU mapping for the model checkpoint
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        state_dict = torch.load(model_path, map_location=device)
         self.model.load_state_dict(state_dict)
+
+        # Additional model metadata
         self.model._ddi_name = 'DeepDerm' 
         self.model._ddi_threshold = 0.687
         self.model._ddi_web_path = 'https://drive.google.com/uc?id=1OLt11htu9bMPgsE33vZuDiU5Xe4UqKVJ'
         self.eval()
-
+        
     def forward(self, x):
         '''Expects an image scaled to (-1,1) range. Rescale to the classifer's
         native range, then pass through the classifier and return the softmax of
