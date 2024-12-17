@@ -7,7 +7,6 @@ We provide set-up instructions specific to Boston University's SCC for those hav
 ## Instructions for Running
 
 ## Set-up
-__
 #### Dependencies and Environment
 ___
 The repository comes with a `environment.yaml` file. You can create an python environment based on this using `conda env create -f environment.yaml`. 
@@ -52,7 +51,6 @@ Much of these instructions will be different on a Linux or Mac environment. For 
 
 
 ## Our Contributions (Diffusion Model)
-__
 
 `diffusion.py` contains the architecture for our diffusion model, based on [TeaPearce/Conditional_Diffusion_MNIST](https://github.com/TeaPearce/Conditional_Diffusion_MNIST)
 - This script also trains the diffusion model on the ISIC dataset.
